@@ -1,0 +1,25 @@
+# Node.js
+node_modules/
+npm-debug.log*
+
+# TypeScript（ビルド成果物）
+*.js
+*.d.ts
+*.tsbuildinfo
+
+# CDK
+cdk.out/
+.cdk.staging/
+
+# パイプラインのソースとして S3 に配置する zip
+cdk.zip
+app.zip
+
+# 環境変数・認証情報
+.env
+.env.*
+
+# OS / エディタ
+.DS_Store
+.idea/
+*.swp

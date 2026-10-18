@@ -1,0 +1,13 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/app.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk*.json", "**/*.js", "**/*.d.ts", "node_modules", "cdk.out", "cloudformation", "docs", "img"]
+  },
+  "context": {
+    "prefix": "multi-input",
+    "pipelineName": "multi-input-pipeline",
+    "cdkSourceKey": "cdk.zip",
+    "appSourceKey": "app.zip"
+  }
+}
