@@ -33,4 +33,4 @@ CDK Pipeline のデプロイ前に、初期依存リソース（S3・IAM）を C
 
 ## CDK デプロイ
 
-初期設定と初期依存リソースのデプロイが完了したあとに、CDK Pipeline をデプロイする。初回はローカルから `cdk deploy` を実行し、以降は CDK・Pipeline 用の S3 に `cdk.zip` を配置して更新する。手順は [CDK デプロイ](docs/deploy.md) を参照。
+初期設定と初期依存リソースのデプロイが完了したあとに、CDK Pipeline をデプロイする。初回はローカルから `cdk deploy` を実行し、以降は GitHub からダウンロードした zip（`cdk-pipeline-multi-input-core-<ブランチ名>.zip`）を CDK・Pipeline 用の S3 に配置して更新する。手順は [CDK デプロイ](docs/deploy.md) を参照。

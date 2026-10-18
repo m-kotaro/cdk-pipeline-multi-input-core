@@ -17,11 +17,20 @@ export interface PipelineStackProps extends StackProps {
   readonly prefix: string;
   /** CodePipeline のパイプライン名（prerequisites.yaml の PipelineName と同じ値） */
   readonly pipelineName: string;
-  /** CDK・Pipeline 用ソースの S3 オブジェクトキー */
-  readonly cdkSourceKey: string;
-  /** アプリ用ソースの S3 オブジェクトキー */
-  readonly appSourceKey: string;
+  /** ソースとして取り込むブランチ名（例: main） */
+  readonly branch: string;
+  /** CDK・Pipeline 用ソースのリポジトリ名 */
+  readonly cdkSourceRepo: string;
+  /** アプリ用ソースのリポジトリ名 */
+  readonly appSourceRepo: string;
 }
+
+/**
+ * GitHub の「Download ZIP」と同じ命名でソースの名前を組み立てる。
+ * zip 名・zip 内のトップディレクトリ名はどちらも `<リポジトリ名>-<ブランチ名>` になり、
+ * ブランチ名の `/` は `-` に置き換わる。
+ */
+const sourceName = (repo: string, branch: string) => `${repo}-${branch.replace(/\//g, "-")}`;
 
 /**
  * S3 の 2 つのソース（CDK・Pipeline 用 / アプリ用）を入力とする CodePipeline。
@@ -34,7 +43,9 @@ export class PipelineStack extends Stack {
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
     super(scope, id, props);
 
-    const { prefix, pipelineName, cdkSourceKey, appSourceKey } = props;
+    const { prefix, pipelineName, branch } = props;
+    const cdkSource = sourceName(props.cdkSourceRepo, branch);
+    const appSource = sourceName(props.appSourceRepo, branch);
     const importValue = (name: string) => Fn.importValue(`${prefix}-${name}`);
 
     // ------------------------------------------------------------
@@ -72,14 +83,14 @@ export class PipelineStack extends Stack {
         new actions.S3SourceAction({
           actionName: "CdkSource",
           bucket: cdkSourceBucket,
-          bucketKey: cdkSourceKey,
+          bucketKey: `${cdkSource}.zip`,
           output: cdkOutput,
           trigger: actions.S3Trigger.NONE,
         }),
         new actions.S3SourceAction({
           actionName: "AppSource",
           bucket: appSourceBucket,
-          bucketKey: appSourceKey,
+          bucketKey: `${appSource}.zip`,
           output: appOutput,
           trigger: actions.S3Trigger.NONE,
         }),
@@ -90,7 +101,7 @@ export class PipelineStack extends Stack {
     const deployAction = (stage: DeployStage) =>
       new actions.CodeBuildAction({
         actionName: "CdkDeploy",
-        project: this.createDeployProject(prefix, stage, codeBuildRole),
+        project: this.createDeployProject({ prefix, stage, branch, cdkSource, appSource, role: codeBuildRole }),
         input: cdkOutput,
         extraInputs: [appOutput],
       });
@@ -119,8 +130,8 @@ export class PipelineStack extends Stack {
     // Trigger: どちらの S3 にオブジェクトを配置してもパイプラインを起動する
     // ------------------------------------------------------------
     const sources = [
-      { id: "CdkSourceRule", bucket: cdkSourceBucket, key: cdkSourceKey },
-      { id: "AppSourceRule", bucket: appSourceBucket, key: appSourceKey },
+      { id: "CdkSourceRule", bucket: cdkSourceBucket, key: `${cdkSource}.zip` },
+      { id: "AppSourceRule", bucket: appSourceBucket, key: `${appSource}.zip` },
     ];
     for (const source of sources) {
       new events.Rule(this, source.id, {
@@ -139,9 +150,20 @@ export class PipelineStack extends Stack {
 
   /**
    * 環境ごとに cdk deploy を実行する CodeBuild プロジェクト。
-   * -c stage で対象環境を、-c appSourceDir でアプリ用ソースの展開先（CODEBUILD_SRC_DIR_App）を CDK に渡す。
+   *
+   * GitHub の zip はトップに `<リポジトリ名>-<ブランチ名>/` を含むため、その中に移動してから実行する。
+   * -c stage で対象環境、-c branch でブランチ名、-c appSourceDir でアプリ用ソースの展開先を CDK に渡す。
    */
-  private createDeployProject(prefix: string, stage: DeployStage, role: iam.IRole): codebuild.PipelineProject {
+  private createDeployProject(params: {
+    prefix: string;
+    stage: DeployStage;
+    branch: string;
+    cdkSource: string;
+    appSource: string;
+    role: iam.IRole;
+  }): codebuild.PipelineProject {
+    const { prefix, stage, branch, cdkSource, appSource, role } = params;
+
     return new codebuild.PipelineProject(this, `DeployProject-${stage}`, {
       projectName: `${prefix}-deploy-${stage}`,
       role,
@@ -149,16 +171,28 @@ export class PipelineStack extends Stack {
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         computeType: codebuild.ComputeType.SMALL,
       },
+      environmentVariables: {
+        STAGE: { value: stage },
+        BRANCH: { value: branch },
+        CDK_SOURCE_DIR: { value: cdkSource },
+        APP_SOURCE_DIR: { value: appSource },
+      },
       buildSpec: codebuild.BuildSpec.fromObject({
         version: "0.2",
         phases: {
           install: {
             "runtime-versions": { nodejs: "22" },
-            commands: ["npm ci"],
           },
           build: {
             commands: [
-              `npx cdk deploy --all --require-approval never -c stage=${stage} -c appSourceDir="\${CODEBUILD_SRC_DIR_App}"`,
+              'cd "${CODEBUILD_SRC_DIR}/${CDK_SOURCE_DIR}"',
+              "npm ci",
+              [
+                "npx cdk deploy --all --require-approval never",
+                '-c stage="${STAGE}"',
+                '-c branch="${BRANCH}"',
+                '-c appSourceDir="${CODEBUILD_SRC_DIR_App}/${APP_SOURCE_DIR}"',
+              ].join(" "),
             ],
           },
         },

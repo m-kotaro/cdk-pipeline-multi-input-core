@@ -7,7 +7,7 @@ const app = new App();
 const getContext = (key: string): string => {
   const value = app.node.tryGetContext(key);
   if (typeof value !== "string" || value === "") {
-    throw new Error(`context "${key}" が cdk.json に設定されていない`);
+    throw new Error(`context "${key}" が設定されていない（cdk.json または -c ${key}=... で指定する）`);
   }
   return value;
 };
@@ -39,8 +39,10 @@ new PipelineStack(app, `${prefix}-pipeline`, {
   env,
   prefix,
   pipelineName: getContext("pipelineName"),
-  cdkSourceKey: getContext("cdkSourceKey"),
-  appSourceKey: getContext("appSourceKey"),
+  // 既定値は cdk.json の "main"。-c branch=<ブランチ名> で上書きできる
+  branch: getContext("branch"),
+  cdkSourceRepo: getContext("cdkSourceRepo"),
+  appSourceRepo: getContext("appSourceRepo"),
 });
 
 // アプリ起因のリソース（Lambda / Step Functions）は未実装。

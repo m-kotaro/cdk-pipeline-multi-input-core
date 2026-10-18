@@ -12,8 +12,7 @@ cdk.out/
 .cdk.staging/
 
 # パイプラインのソースとして S3 に配置する zip
-cdk.zip
-app.zip
+cdk-pipeline-multi-input-*.zip
 
 # 環境変数・認証情報
 .env
